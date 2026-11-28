@@ -2409,7 +2409,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         : [];
     const rowMenuItems: ContextMenuDef = menuTarget ? [
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
-        { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
+        { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.insertBelowRow(menuTarget) },
         { id: "sep-insert", separator: true },
         // Copy and cut run the editor's own clipboard handlers - the same rows, in the same format, as
         // Mod+C / Mod+X - by handing the browser's command to the editor root, which owns them.
@@ -2782,6 +2782,38 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             }
                             const row = stabilizeRow(projected);
                             const menuAddLine = menuAddLines.get(row.block.id);
+                            const slotHere = editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && insertSlotPlacement !== null && insertSlotPlacement.hostId === row.block.id;
+                            // A slot that lands after the menu (an empty last line stepping out of it) is
+                            // drawn below the menu's add line, where its row will be once written.
+                            const addLineFirst = Boolean(menuAddLine && slotHere && insertSlotPlacement && insertSlotPlacement.depth < menuAddLine.depth);
+                            const addLine = menuAddLine ? (
+                                    <button
+                                        type="button"
+                                        tabIndex={-1}
+                                        {...freeze.writes()}
+                                        aria-label={t("story.container.addOption")}
+                                        // Down off the menu's last row lands the keyboard cursor here;
+                                        // the ring is how the author sees that Enter adds the option
+                                        // (see moveActiveRowSelection).
+                                        className={[
+                                            "mt-0.5 flex min-h-[26px] w-full items-center gap-2 rounded-md border-l-2 border-transparent pr-3 text-left text-xs transition-colors",
+                                            editor.addOptionMenuId === menuAddLine.menuId
+                                                ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
+                                                : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
+                                            "disabled:cursor-not-allowed disabled:opacity-40",
+                                        ].join(" ")}
+                                        style={{ paddingLeft: `calc(var(--nl-story-gutter) + ${rowIndent(menuAddLine.depth)})` }}
+                                        onClick={() => editor.addInsideContainer(menuAddLine.menuId)}
+                                    >
+                                        {/* The plus takes the mark column and the words land on the
+                                            body edge, so the line reads down the same column as the
+                                            options it adds to. */}
+                                        <span className="flex w-[var(--nl-story-mark,26px)] shrink-0 items-center justify-center">
+                                            <Plus className="h-3.5 w-3.5" />
+                                        </span>
+                                        {t("story.container.addOption")}
+                                    </button>
+                                ) : null;
                             return (
                             <div
                                 key={row.block.id}
@@ -2865,7 +2897,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     commentColumn={commentColumn}
                                 />
                                 )}
-                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && insertSlotPlacement !== null && insertSlotPlacement.hostId === row.block.id ? (
+                                {addLineFirst ? addLine : null}
+                                {slotHere && editor.editorMode.kind === "insert" && insertSlotPlacement !== null ? (
                                     <InsertRow
                                         mode={editor.editorMode}
                                         // Where the line will land (see `resolveInsertSlotPlacement`):
@@ -2890,34 +2923,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         slashAtAlias={editor.slashAtAlias}
                                     />
                                 ) : null}
-                                {menuAddLine ? (
-                                    <button
-                                        type="button"
-                                        tabIndex={-1}
-                                        {...freeze.writes()}
-                                        aria-label={t("story.container.addOption")}
-                                        // Down off the menu's last row lands the keyboard cursor here;
-                                        // the ring is how the author sees that Enter adds the option
-                                        // (see moveActiveRowSelection).
-                                        className={[
-                                            "mt-0.5 flex min-h-[26px] w-full items-center gap-2 rounded-md pr-3 text-left text-xs transition-colors",
-                                            editor.addOptionMenuId === menuAddLine.menuId
-                                                ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
-                                                : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
-                                            "disabled:cursor-not-allowed disabled:opacity-40",
-                                        ].join(" ")}
-                                        style={{ paddingLeft: rowIndent(menuAddLine.depth) }}
-                                        onClick={() => editor.addInsideContainer(menuAddLine.menuId)}
-                                    >
-                                        {/* The plus takes the mark column and the words land on the
-                                            body edge, so the line reads down the same column as the
-                                            options it adds to. */}
-                                        <span className="flex w-[var(--nl-story-mark,26px)] shrink-0 items-center justify-center">
-                                            <Plus className="h-3.5 w-3.5" />
-                                        </span>
-                                        {t("story.container.addOption")}
-                                    </button>
-                                ) : null}
+                                {addLineFirst ? null : addLine}
                             </div>
                             );
                         })}

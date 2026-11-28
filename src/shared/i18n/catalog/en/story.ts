@@ -1533,7 +1533,7 @@ export const story = {
         toggle: { label: "Toggle", detail: "Flip a true/false variable" },
         reset: { label: "Reset", detail: "Put something back the way it was: a variable to its default, or a stage object to its neutral look" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
-        if: { label: "If", detail: "Branch on a condition" },
+        if: { label: "If", detail: "Branch on a condition", alias: "" },
         menu: { label: "Menu", detail: "Present a set of options to the player" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group

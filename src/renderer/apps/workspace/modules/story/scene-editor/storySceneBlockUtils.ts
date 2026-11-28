@@ -498,6 +498,111 @@ export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBl
     return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
+/** A row that exists only as a part of its container: a menu's option, a condition's branch. */
+function isStructuralChild(block: StoryBlock): boolean {
+    return (block.kind === "nodeAction" && block.payload.action === "choiceOption")
+        || (block.kind === "control" && block.payload.control === "conditionBranch");
+}
+
+/**
+ * Where a line "inserted below" a menu option or a condition branch goes: the top of that row's own
+ * body, or null for any other row (whose line goes after it, {@link getInsertionTargetAfter}).
+ *
+ * After the row is the one place it cannot go. An option's siblings are options and a branch's are
+ * branches - the menu and the condition hold nothing else, and the compiler passes over any other row
+ * under them without a word - so a narration written "after" an option was a line that never played.
+ * Inside the row is also what the author was reaching for: under an option, what happens when it is
+ * picked.
+ */
+export function structuralBodyTarget(scene: StoryScene, blockId: StoryBlockId | null): StoryBlockTarget | null {
+    const block = blockId ? scene.blocks[blockId] : null;
+    if (!block || !isStructuralChild(block)) {
+        return null;
+    }
+    return { parentId: block.id, beforeBlockId: block.childrenIds[0] ?? null };
+}
+
+/**
+ * A target corrected for the row being written there: a row its parent will not hold (anything but
+ * an option under a menu, anything but a branch under a condition) goes into the body of the option or
+ * branch just above that spot instead. Every other target comes back as it was.
+ *
+ * The last line of defence for the same silent loss {@link structuralBodyTarget} prevents at the
+ * caret: a paste or a programmatic insert "after an option" computes a sibling position too, and the
+ * compiler skips what lands there.
+ */
+export function fitTargetForRow(scene: StoryScene, target: StoryBlockTarget, row: StoryBlock): StoryBlockTarget {
+    if (!target.parentId) {
+        return target;
+    }
+    const parent = scene.blocks[target.parentId];
+    if (!parent || canPlaceBlockUnder(parent, row)) {
+        return target;
+    }
+    const siblings = parent.childrenIds;
+    const index = target.beforeBlockId ? siblings.indexOf(target.beforeBlockId) : siblings.length;
+    const above = index > 0 ? siblings[index - 1] : siblings[0] ?? null;
+    const body = structuralBodyTarget(scene, above);
+    return body ? { parentId: body.parentId, beforeBlockId: null } : target;
+}
+
+/**
+ * The branch Shift+Enter on a condition's branch adds, and where: the next branch below it.
+ *
+ * Below the last branch of a condition with no fallback, that is the fallback (`else`), which is what
+ * the second branch of nearly every condition is. Anywhere else it is an `else if` directly under the
+ * branch - or, on the `else` itself, which has nothing below it, an `else if` just above it.
+ */
+export function planBranchBelow(
+    scene: StoryScene,
+    branchId: StoryBlockId,
+): { conditionId: StoryBlockId; branch: "elseIf" | "else"; beforeBlockId: StoryBlockId | null } | null {
+    const branch = scene.blocks[branchId];
+    if (branch?.kind !== "control" || branch.payload.control !== "conditionBranch" || !branch.parentId) {
+        return null;
+    }
+    const condition = scene.blocks[branch.parentId];
+    if (!condition) {
+        return null;
+    }
+    const siblings = condition.childrenIds;
+    const index = siblings.indexOf(branchId);
+    const hasElse = siblings.some(id => {
+        const child = scene.blocks[id];
+        return child?.kind === "control" && child.payload.control === "conditionBranch" && child.payload.branch === "else";
+    });
+    if (branch.payload.branch === "else") {
+        return { conditionId: condition.id, branch: "elseIf", beforeBlockId: branchId };
+    }
+    if (!hasElse && index === siblings.length - 1) {
+        return { conditionId: condition.id, branch: "else", beforeBlockId: null };
+    }
+    return { conditionId: condition.id, branch: "elseIf", beforeBlockId: siblings[index + 1] ?? null };
+}
+
+/**
+ * The container an empty line at the very end of a body steps out of, or null where it stays a line.
+ *
+ * Enter on an empty last item ends a list in any editor; here it ends the block the caret is writing
+ * in, so a branch, an option or a loop body can be left without reaching for the mouse. The step goes
+ * one block at a time: out of an option is out of its menu, out of a branch is out of its condition
+ * (neither has room for a plain line between its parts), out of anything else is out of that block.
+ * A line in the middle of a body, or one at the scene's own level, is just an empty line.
+ */
+export function containerExitedByEmptyLine(scene: StoryScene, target: StoryBlockTarget): StoryBlockId | null {
+    if (!target.parentId || target.beforeBlockId) {
+        return null;
+    }
+    const parent = scene.blocks[target.parentId];
+    if (!parent) {
+        return null;
+    }
+    if (isStructuralChild(parent)) {
+        return parent.parentId && scene.blocks[parent.parentId] ? parent.parentId : null;
+    }
+    return parent.id;
+}
+
 /**
  * Where rows land that nothing anchors - a paste with no row selected: the end of the scene, but
  * ahead of the rows that end it.

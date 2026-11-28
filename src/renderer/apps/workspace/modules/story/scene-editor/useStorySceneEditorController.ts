@@ -72,10 +72,13 @@ import {
     annotateNestingBranches,
     buildDialogueAppearances,
     buildVisibleRows,
+    containerExitedByEmptyLine,
     filterOutSelectedDescendants,
     findPreviousSibling,
+    fitTargetForRow,
     nextSelectionAfterDelete,
     planBlockGroupMove,
+    planBranchBelow,
     planRowBackspaceReplacement,
     planSelectionNudge,
     getInsertionTargetAfter,
@@ -86,6 +89,7 @@ import {
     rewritesRowInPlace,
     storyRowActivation,
     storyRowLineEdit,
+    structuralBodyTarget,
     isTextEditableBlock,
     selectRange,
     updateTextPayload,
@@ -110,6 +114,7 @@ import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
+import { STORY_EDIT_BRANCH_CONDITION_EVENT } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers, type StoryPasteWizardRequest } from "./useStorySceneClipboardHandlers";
 import { materializePastedRows } from "@/lib/story/paste/storyPasteModel";
 import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/lib/story/paste/storyPasteTypes";
@@ -1613,7 +1618,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             recordHistory();
         }
         // An explicit target ("add inside a container") overrides the default sibling-after placement.
-        storyService.insertBlock(storyId, sceneId, block, options?.target ?? getInsertionTargetAfter(scene, afterBlockId));
+        storyService.insertBlock(storyId, sceneId, block, fitTargetForRow(scene, options?.target ?? getInsertionTargetAfter(scene, afterBlockId), block));
         // Rewriting a row rather than adding one: the replacement is in place, so the original goes.
         // Done here, after the insert, so a failed insert cannot leave the author with neither.
         if (options?.replaceBlockId) {
@@ -1707,14 +1712,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the row it leaves active is the one already active, which is what makes the request go out
         // now rather than waiting for a change that is not coming.
         revealWith(afterBlockId ?? activeBlockIdRef.current, { kind: "slot" }, "step");
-        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, initialValue: "", confirmation });
+        // Below an option or a branch is inside it: the line opens at the top of that row's body,
+        // since its container holds nothing but options or branches (see `structuralBodyTarget`).
+        const body = scene ? structuralBodyTarget(scene, afterBlockId) : null;
+        if (body?.parentId) {
+            setCollapsedBlockIds(prev => {
+                if (!prev.has(body.parentId!)) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                next.delete(body.parentId!);
+                return next;
+            });
+        }
+        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now(), ...(body ? { target: body } : {}) }, initialValue: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
         }
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, [revealWith]);
+    }, [revealWith, scene]);
 
     /**
      * Open an insert slot directly *above* a row, at that row's own depth. Modelled on `startLineEdit`'s
@@ -2918,6 +2936,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
             return true;
         }
+        // The last line of a body steps out of its block instead (see `containerExitedByEmptyLine`):
+        // nothing is written, and the slot reopens after the block, one level out.
+        const exited = scene ? containerExitedByEmptyLine(scene, slot.target ?? getInsertionTargetAfter(scene, slot.afterBlockId)) : null;
+        if (exited) {
+            startInsertAfter(exited, true);
+            return true;
+        }
         // A slot with no row beneath it: the blank line lands where the slot is drawn, and the slot
         // re-opens under it - which puts the new row above the caret, exactly as the branch above does.
         insertBlock(block, slot.afterBlockId, false, { target: slot.target });
@@ -3651,6 +3676,49 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService]);
 
     /**
+     * Shift+Enter on a condition's branch: the next branch, not a line. The branch's own Enter already
+     * writes into its body, so this is the one key left for "and otherwise" - the fallback under the
+     * last branch, or an `else if` (see `planBranchBelow`). A fallback opens its body for the first
+     * line; an `else if` opens its condition, which is the thing it still needs.
+     */
+    const addBranchBelow = useCallback((branchId: StoryBlockId): boolean => {
+        if (!scene) {
+            return false;
+        }
+        const plan = planBranchBelow(scene, branchId);
+        if (!plan) {
+            return false;
+        }
+        const block = createBlock("conditionBranch");
+        if (!block || block.kind !== "control" || block.payload.control !== "conditionBranch") {
+            return false;
+        }
+        block.payload.branch = plan.branch;
+        ensureExpanded(plan.conditionId);
+        insertBlock(block, null, false, { target: { parentId: plan.conditionId, beforeBlockId: plan.beforeBlockId } });
+        if (plan.branch === "else") {
+            openInsertInside(block.id, block.id);
+        } else {
+            setEditorMode({ kind: "idle" });
+            setActiveBlockId(block.id);
+            setSelectedBlockIds(new Set([block.id]));
+            selectionAnchorRef.current = block.id;
+            window.requestAnimationFrame(() => {
+                window.dispatchEvent(new CustomEvent(STORY_EDIT_BRANCH_CONDITION_EVENT, { detail: { blockId: block.id } }));
+            });
+        }
+        return true;
+    }, [createBlock, ensureExpanded, insertBlock, openInsertInside, scene]);
+
+    /** "Insert below" as both Shift+Enter and the row menu mean it: a line, or under a branch, a branch. */
+    const insertBelowRow = useCallback((blockId: StoryBlockId | null) => {
+        if (blockId && addBranchBelow(blockId)) {
+            return;
+        }
+        startInsertAfter(blockId, true);
+    }, [addBranchBelow, startInsertAfter]);
+
+    /**
      * Shift+Enter's anchor: the last selected row in document order, not the active one. The active
      * row is the selection's head, which sits *above* its tail after Shift+ArrowUp - anchoring there
      * would drop the new row into the middle of the selection.
@@ -3662,8 +3730,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 last = row.block.id;
             }
         }
-        startInsertAfter(last ?? activeBlockId, true);
-    }, [activeBlockId, selectedBlockIds, startInsertAfter, visibleRows]);
+        insertBelowRow(last ?? activeBlockId);
+    }, [activeBlockId, insertBelowRow, selectedBlockIds, visibleRows]);
 
     const selectAllRows = useCallback(() => {
         setSelectedBlockIds(new Set(visibleRows.map(row => row.block.id)));
@@ -4192,7 +4260,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit, startTrailingSlotWith,
-        startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
+        startInsertAfterSelection, insertBelowRow, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, escapeInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,

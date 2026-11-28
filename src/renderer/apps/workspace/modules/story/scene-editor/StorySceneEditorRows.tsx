@@ -94,6 +94,7 @@ import { characterSpeakerIdentity, storySpeakerPaint, type StorySpeakerIdentity 
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import type { StoryRowHighlight } from "@/lib/settings/storyRowHighlightOptions";
 import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
+import { STORY_EDIT_BRANCH_CONDITION_EVENT } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
@@ -1690,8 +1691,7 @@ function useConditionSummaryLookups(scene: StoryScene, document: StoryDocument):
 }
 
 /** Editable condition chip on a branch header — opens the inline condition popover. */
-/** Open a branch row's condition editor from the keyboard; `detail.blockId` names the branch. */
-export const STORY_EDIT_BRANCH_CONDITION_EVENT = "nl-story-edit-branch-condition";
+export { STORY_EDIT_BRANCH_CONDITION_EVENT };
 
 function ConditionChip(props: {
     block: StoryBlock;
@@ -1702,6 +1702,8 @@ function ConditionChip(props: {
     const lookups = useConditionSummaryLookups(props.scene, props.document);
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
     const chipRef = useRef<HTMLButtonElement | null>(null);
+    /** Opened from the keyboard (F2, or Shift+Enter adding this branch): done hands the keys back to the rows. */
+    const openedFromKeysRef = useRef(false);
     const block = props.block;
     // F2 on the branch row asks for this editor (see `STORY_EDIT_BRANCH_CONDITION_EVENT`): the chip
     // was mouse-only - Tab indents, the branch has no card and its Enter adds a line inside.
@@ -1712,6 +1714,7 @@ function ConditionChip(props: {
                 return;
             }
             const rect = chipRef.current.getBoundingClientRect();
+            openedFromKeysRef.current = true;
             setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
         };
         window.addEventListener(STORY_EDIT_BRANCH_CONDITION_EVENT, open);
@@ -1729,7 +1732,18 @@ function ConditionChip(props: {
             return;
         }
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        openedFromKeysRef.current = false;
         setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
+    };
+    // Enter in the editor closes it. Opened from the keyboard, the keys go back to the scene's rows
+    // (where this branch is the active one) rather than to the chip, whose own Enter would reopen it.
+    const confirm = () => {
+        const fromKeys = openedFromKeysRef.current;
+        setAnchor(null);
+        if (fromKeys) {
+            const root = chipRef.current?.closest<HTMLElement>("[data-story-density]");
+            window.requestAnimationFrame(() => root?.focus());
+        }
     };
     return (
         <>
@@ -1756,6 +1770,7 @@ function ConditionChip(props: {
                         setAnchor(null);
                     }}
                     onClose={() => setAnchor(null)}
+                    onConfirm={confirm}
                 />
             ) : null}
         </>

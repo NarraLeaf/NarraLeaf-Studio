@@ -50,7 +50,7 @@ import {
     listSerializedBlocks,
     treatForeignCharacterRefs,
 } from "./storyForeignPaste";
-import { filterOutSelectedDescendants, getDefaultAppendTarget, getInsertionTargetAfter } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, fitTargetForRow, getDefaultAppendTarget, getInsertionTargetAfter } from "./storySceneBlockUtils";
 import {
     blueprintIdsNamedByStories,
     collectCarriedBlueprints,
@@ -231,7 +231,9 @@ export function useStorySceneClipboardHandlers(params: {
         if (!storyService || !storyId || !sceneId || blocks.length === 0) {
             return;
         }
-        storyService.insertBlocks(storyId, sceneId, blocks.map(block => ({ block, target })));
+        // Pasted under an option or a branch, the rows go into its body: its container holds nothing else.
+        const fitted = params.scene ? fitTargetForRow(params.scene, target, blocks[0]) : target;
+        storyService.insertBlocks(storyId, sceneId, blocks.map(block => ({ block, target: fitted })));
         if (pasteMayTakeFocus()) {
             params.setActiveBlockId(blocks[0].id);
             params.setSelectedBlockIds(new Set(blocks.map(block => block.id)));
@@ -285,7 +287,8 @@ export function useStorySceneClipboardHandlers(params: {
         params.recordHistory();
         // One list, one call, one operation: a paste is one gesture, so it is one undo step here
         // and one effect in a live session rather than a row-by-row run of either.
-        const inserts = clones.flatMap(cloned => flattenSerializedClone(cloned, target));
+        const fitted = params.scene ? fitTargetForRow(params.scene, target, clones[0].block) : target;
+        const inserts = clones.flatMap(cloned => flattenSerializedClone(cloned, fitted));
         storyService.insertBlocks(storyId, sceneId, inserts, derived);
         const insertedRoots = clones.map(cloned => cloned.block.id);
         if (insertedRoots[0] && pasteMayTakeFocus()) {

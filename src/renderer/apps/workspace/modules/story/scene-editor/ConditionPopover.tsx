@@ -29,6 +29,11 @@ export function ConditionPopover(props: {
     onChange: (condition: StoryConditionRef | undefined) => void;
     onClear: () => void;
     onClose: () => void;
+    /**
+     * Enter in one of the editor's fields: the condition is written already (every edit goes out as
+     * it is made), so this is the author saying they are done. Absent, Enter stays the field's own.
+     */
+    onConfirm?: () => void;
 }) {
     const { t } = useTranslation();
     const doc = useHostDocument();
@@ -69,7 +74,16 @@ export function ConditionPopover(props: {
             className="fixed z-[80] w-72 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top: Math.max(8, top), left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
-            onKeyDown={keepStoryKeysInPopover}
+            onKeyDown={event => {
+                keepStoryKeysInPopover(event);
+                const target = event.target as HTMLElement;
+                // A completion list inside the editor takes its own Enter first and marks it handled.
+                if (event.key === "Enter" && props.onConfirm && !event.defaultPrevented && !event.nativeEvent.isComposing
+                    && (target.tagName === "INPUT" || target.tagName === "TEXTAREA") && !target.closest("[data-select-menu]")) {
+                    event.preventDefault();
+                    props.onConfirm();
+                }
+            }}
         >
             <div className="mb-1.5 text-2xs text-fg-muted">{t("story.condition.title")}</div>
             <ConditionEditor

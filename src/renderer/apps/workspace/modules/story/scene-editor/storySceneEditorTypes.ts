@@ -255,3 +255,6 @@ export type StoryClipboardPayload = {
      */
     blueprints?: Record<string, Blueprint>;
 };
+
+/** Open a branch row's condition editor from the keyboard; `detail.blockId` names the branch. */
+export const STORY_EDIT_BRANCH_CONDITION_EVENT = "nl-story-edit-branch-condition";

@@ -138,6 +138,14 @@ describe("parseCommandLine - a command named in the active locale", () => {
         expect(command("/对白").def?.commandId).toBe("say");
     });
 
+    it("accepts a locale's second word for a command, so 如果 is 条件", () => {
+        i18nStore.setLocale("zh");
+        expect(command("/如果 gold > 10").def?.commandId).toBe("if");
+        expect(command("/条件 gold > 10").def?.commandId).toBe("if");
+        i18nStore.setLocale("ja");
+        expect(command("/もし gold > 10").def?.commandId).toBe("if");
+    });
+
     it("parses a Chinese token's arguments exactly as the English token would - English keys keep working", () => {
         i18nStore.setLocale("zh");
         const localized = command("/背景 forest t=fade");

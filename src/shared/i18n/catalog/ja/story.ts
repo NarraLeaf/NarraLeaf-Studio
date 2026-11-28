@@ -1426,7 +1426,7 @@ export const story = {
         toggle: { label: "反転", detail: "真偽の変数をひっくり返す" },
         reset: { label: "リセット", detail: "元の状態に戻す：変数は初期値へ、舞台のオブジェクトは素の見た目へ" },
         declareLocal: { label: "シーン変数", detail: "このシーンだけで有効な変数を宣言する" },
-        if: { label: "条件", detail: "条件で分岐する" },
+        if: { label: "条件", detail: "条件で分岐する", alias: "もし" },
         menu: { label: "メニュー", detail: "プレイヤーに選択肢を提示する" },
         repeat: { label: "繰り返し", detail: "中のアクションを決めた回数だけ実行する。条件で回すなら /until を使う" },
         // 詳細だけが、語そのものでは言えない 1 点を言う。`until` は *止まる* ときを言うので、

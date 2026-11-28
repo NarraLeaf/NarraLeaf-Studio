@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { canPlaceBlockUnder, deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, menuEndingAt, menuLastRowIndex, nextSelectionAfterDelete, planBlockGroupMove, planMenuAddLines, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, resolveInsertSlotPlacement, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, menuEndingAt, menuLastRowIndex, nextSelectionAfterDelete, planBlockGroupMove, planMenuAddLines, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, resolveInsertSlotPlacement, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget, containerExitedByEmptyLine, fitTargetForRow, planBranchBelow, structuralBodyTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -887,5 +887,64 @@ describe("editing a row as text", () => {
         expect(rewritesRowInPlace(row, rebuilt)).toBe(true);
         expect(rewritesRowInPlace(row, narration("n"))).toBe(false);
         expect(rewritesRowInPlace(group("g", []), group("h", []))).toBe(false);
+    });
+});
+
+describe("lines written around a menu's options and a condition's branches", () => {
+    const opt = (id: string, parentId: string, childrenIds: string[] = []): StoryBlock =>
+        ({ id, kind: "nodeAction", parentId, childrenIds, payload: { action: "choiceOption", text: { textId: `${id}-t`, role: "choiceText", value: id } } });
+    const menuBlock = (id: string, childrenIds: string[]): StoryBlock =>
+        ({ id, kind: "nodeAction", parentId: null, childrenIds, payload: { action: "choice" } } as unknown as StoryBlock);
+    const branch = (id: string, parentId: string, kind: "if" | "elseIf" | "else", childrenIds: string[] = []): StoryBlock =>
+        ({ id, kind: "control", parentId, childrenIds, payload: { control: "conditionBranch", branch: kind } } as unknown as StoryBlock);
+    const cond = (id: string, childrenIds: string[]): StoryBlock =>
+        ({ id, kind: "control", parentId: null, childrenIds, payload: { control: "condition" } });
+    const repeatBlock = (id: string, childrenIds: string[]): StoryBlock =>
+        ({ id, kind: "control", parentId: null, childrenIds, payload: { control: "repeat", times: 2 } } as unknown as StoryBlock);
+
+    const menuScene = scene([menuBlock("m", ["a", "b"]), opt("a", "m", ["a1"]), narration("a1", "a"), opt("b", "m")], ["m"]);
+
+    it("puts a line inserted below an option at the top of that option's body", () => {
+        expect(structuralBodyTarget(menuScene, "a")).toEqual({ parentId: "a", beforeBlockId: "a1" });
+        expect(structuralBodyTarget(menuScene, "b")).toEqual({ parentId: "b", beforeBlockId: null });
+        expect(structuralBodyTarget(menuScene, "a1")).toBeNull();
+        expect(structuralBodyTarget(menuScene, "m")).toBeNull();
+    });
+
+    it("moves a row its container would not hold into the option above the spot", () => {
+        expect(fitTargetForRow(menuScene, { parentId: "m", beforeBlockId: "b" }, narration("x")))
+            .toEqual({ parentId: "a", beforeBlockId: null });
+        // An option between options is exactly what a menu holds.
+        expect(fitTargetForRow(menuScene, { parentId: "m", beforeBlockId: "b" }, opt("y", "m")))
+            .toEqual({ parentId: "m", beforeBlockId: "b" });
+        expect(fitTargetForRow(menuScene, { parentId: null, beforeBlockId: null }, narration("x")))
+            .toEqual({ parentId: null, beforeBlockId: null });
+    });
+
+    it("adds the fallback under the last branch, and an else-if anywhere else", () => {
+        const two = scene([cond("c", ["i", "e"]), branch("i", "c", "if"), branch("e", "c", "elseIf")], ["c"]);
+        expect(planBranchBelow(two, "e")).toEqual({ conditionId: "c", branch: "else", beforeBlockId: null });
+        expect(planBranchBelow(two, "i")).toEqual({ conditionId: "c", branch: "elseIf", beforeBlockId: "e" });
+        const withElse = scene([cond("c", ["i", "z"]), branch("i", "c", "if"), branch("z", "c", "else")], ["c"]);
+        expect(planBranchBelow(withElse, "i")).toEqual({ conditionId: "c", branch: "elseIf", beforeBlockId: "z" });
+        expect(planBranchBelow(withElse, "z")).toEqual({ conditionId: "c", branch: "elseIf", beforeBlockId: "z" });
+        expect(planBranchBelow(withElse, "c")).toBeNull();
+    });
+
+    it("steps an empty last line out one block at a time", () => {
+        const nested = scene([
+            cond("c", ["i"]), branch("i", "c", "if", ["r"]), repeatBlock("r", ["r1"]), narration("r1", "r"),
+            menuBlock("m", ["a"]), opt("a", "m", ["a1"]), narration("a1", "a"),
+        ], ["c", "m"]);
+        (nested.blocks.r as { parentId: string }).parentId = "i";
+        (nested.blocks.m as { parentId: string | null }).parentId = null;
+        // End of a loop body: out of the loop. End of a branch: out of the whole condition.
+        expect(containerExitedByEmptyLine(nested, { parentId: "r", beforeBlockId: null })).toBe("r");
+        expect(containerExitedByEmptyLine(nested, { parentId: "i", beforeBlockId: null })).toBe("c");
+        // End of an option: out of the whole menu.
+        expect(containerExitedByEmptyLine(nested, { parentId: "a", beforeBlockId: null })).toBe("m");
+        // Mid-body and scene level stay plain empty lines.
+        expect(containerExitedByEmptyLine(nested, { parentId: "r", beforeBlockId: "r1" })).toBeNull();
+        expect(containerExitedByEmptyLine(nested, { parentId: null, beforeBlockId: null })).toBeNull();
     });
 });

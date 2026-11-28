@@ -1,7 +1,7 @@
 import type { TranslationKey } from "@shared/i18n";
 import type { PaletteActionCommand } from "../storyActionCommands";
 import type { StoryCommandContext } from "../storyCommandValues";
-import { commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } from "./registry";
+import { commandAliasKey, commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } from "./registry";
 import { customCommandLayer, customCommandOfSpecId } from "./customCommandState";
 
 /**
@@ -75,9 +75,13 @@ export function localizeSpecCommand(command: PaletteActionCommand, t: SpecComman
     if (custom) {
         return { ...command, label: custom.name, detail: custom.description ?? t("story.customCommandFallbackDetail" as TranslationKey) };
     }
+    const aliasKey = commandAliasKey(command.id);
+    const alias = t(aliasKey).trim();
     return {
         ...command,
         label: t(commandLabelKey(command.id)),
         detail: t(commandDetailKey(command.id)),
+        // The locale's second word is searched like a keyword, so 「如果」 finds 条件 in the menu.
+        ...(alias && alias !== aliasKey ? { aliases: [...(command.aliases ?? []), alias] } : {}),
     };
 }

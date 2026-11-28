@@ -94,7 +94,28 @@ committed past the whole container, so Enter in a menu looked like it had added 
 the scene's "add a row" line at the menu's scale — and `ArrowDown` off that row lands on it, with
 `Enter` adding the option and putting the caret in its label. Without it, an author who had written
 what happens inside one option had no way back to the next option that did not start at the menu's
-header; `ArrowUp` walks the same steps back, menu line before last row.
+header; `ArrowUp` walks the same steps back, menu line before last row. The line sits at the options'
+depth (gutter included), and a slot that steps out of the menu is drawn below it.
+
+**Below an option or a branch is inside it.** A menu holds only options and a condition only branches;
+the compiler passes over any other row under them without a word. So "insert below" (`Shift+Enter`,
+the row menu) on an option opens the slot at the top of its body - with the option label's own
+`Enter` adding the next option, that is the one keyboard way into an option. A paste or any other
+insert whose position would land a plain row beside options or branches goes into the body of the
+one above instead (`fitTargetForRow`).
+
+On a branch row `Enter` already writes into the body, so `Shift+Enter` adds the next branch: the
+fallback (`else`) under the last branch of a condition without one, otherwise an `else if` directly
+below (on the `else`, just above it). A fallback opens its body; an `else if` opens its condition, and
+`Enter` in that editor closes it with the new branch active and the keys back on the rows.
+
+**An empty last line steps out of its block.** `Enter` on an empty slot at the very end of a body
+writes nothing and reopens the slot after the block, one level out - out of an option is out of its
+menu, out of a branch is out of its condition. Anywhere else an empty line is still a blank row.
+
+The condition command also answers to the word an author reaches for first: `story.command.<id>.alias`
+is read by the parser and the menu search but never written, so `@如果` (ja `@もし`) finds and builds
+`条件` while completion still teaches the label.
 
 ## The Backspace ladder
 

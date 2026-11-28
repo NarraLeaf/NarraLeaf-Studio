@@ -169,6 +169,16 @@ export function commandDetailKey(id: string): TranslationKey {
     return `story.command.${id}.detail` as TranslationKey;
 }
 
+/**
+ * A second word a locale accepts for a command, besides its label - the one an author of that language
+ * reaches for first when it is not the label (「如果」 for 条件). Read only, never written: a completion
+ * still inserts the label, so the menu teaches one spelling while the line forgives the other. Absent
+ * or blank for nearly every command.
+ */
+export function commandAliasKey(id: string): TranslationKey {
+    return `story.command.${id}.alias` as TranslationKey;
+}
+
 /** Every English spelling the parser already accepts for any command: canonical token, id, and aliases. */
 function canonicalTokens(): ReadonlySet<string> {
     const tokens = new Set<string>();
@@ -239,6 +249,16 @@ function localizedTokenTables(): LocalizedTokens {
         }
         accept.set(label, def);
         insert.set(def, raw);
+    }
+    // Aliases after every label, so a label always wins a word the two happen to share.
+    for (const def of DEFS) {
+        const key = commandAliasKey(def.commandId);
+        const raw = translateCommand(key).trim();
+        const alias = raw.toLowerCase();
+        if (!alias || raw === key || /\s/.test(alias) || canonical.has(alias) || accept.has(alias)) {
+            continue;
+        }
+        accept.set(alias, def);
     }
     localizedTokens = { locale, accept, insert };
     return localizedTokens;
