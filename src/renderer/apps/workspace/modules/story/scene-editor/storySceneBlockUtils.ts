@@ -390,95 +390,6 @@ export function resolveInsertSlotPlacement(
     return { hostId: rows[last].block.id, depth: anchor.depth };
 }
 
-/** A menu: the container whose children are the choice options. */
-function isMenuBlock(block: StoryBlock): boolean {
-    return block.kind === "nodeAction" && block.payload.action === "choice";
-}
-
-/**
- * The index of the last row a menu occupies, or -1 when the menu is not on the page.
- *
- * A menu's rows are contiguous and one level deeper than its header, so its end is where the depth
- * stops exceeding the header's. A collapsed menu - or one whose options are all filtered out - answers
- * with its own index, which callers read as "there is no body on screen".
- */
-export function menuLastRowIndex(rows: readonly VisibleStoryRow[], menuId: StoryBlockId): number {
-    const index = rows.findIndex(row => row.block.id === menuId);
-    if (index < 0) {
-        return -1;
-    }
-    let last = index;
-    while (last + 1 < rows.length && rows[last + 1].depth > rows[index].depth) {
-        last += 1;
-    }
-    return last;
-}
-
-/**
- * The row each expanded menu's "add option" line is drawn under - the menu's last visible row - with
- * the depth the line sits at.
- *
- * A menu's list of options has to end somewhere the author can add to it: writing what happens inside
- * an option leaves the caret several rows below the menu's header, and the header's "+" is then both
- * off-screen and about a row that is no longer the one being edited. This is the scene's own answer - an
- * add line at the end of the list - at the menu's scale, and it is where Down off the menu's last row
- * lands (see {@link menuEndingAt}).
- *
- * A collapsed menu, or one whose options are all filtered out, has no body on screen: it gets no line
- * and falls back to the header's "+".
- */
-export function planMenuAddLines(
-    rows: readonly VisibleStoryRow[],
-): Map<StoryBlockId, { menuId: StoryBlockId; depth: number }> {
-    const byAfterRow = new Map<StoryBlockId, { menuId: StoryBlockId; depth: number }>();
-    rows.forEach((row, index) => {
-        const block = row.block;
-        if (!isMenuBlock(block) || block.childrenIds.length === 0) {
-            return;
-        }
-        const last = menuLastRowIndex(rows, block.id);
-        if (last <= index) {
-            return;
-        }
-        byAfterRow.set(rows[last].block.id, { menuId: block.id, depth: row.depth + 1 });
-    });
-    return byAfterRow;
-}
-
-/**
- * The nearest expanded menu whose LAST visible row is the row at `index`, if any.
- *
- * Down from the end of a menu must land on that menu's "add option" line rather than jumping out of the
- * menu to whatever the scene writes next. Ancestors are read off the visible list (the nearest preceding
- * row one level up), so this needs no scene lookup and works the same on a filtered page.
- */
-export function menuEndingAt(rows: readonly VisibleStoryRow[], index: number): StoryBlockId | null {
-    const row = rows[index];
-    if (!row) {
-        return null;
-    }
-    const next = rows[index + 1];
-    let depth = row.depth;
-    for (let cursor = index - 1; cursor >= 0 && depth > 0; cursor -= 1) {
-        const candidate = rows[cursor];
-        if (candidate.depth >= depth) {
-            continue;
-        }
-        depth = candidate.depth;
-        if (!isMenuBlock(candidate.block) || candidate.block.childrenIds.length === 0) {
-            continue;
-        }
-        // A collapsed menu draws no body and therefore no add line: there is nothing to land on.
-        if (menuLastRowIndex(rows, candidate.block.id) <= cursor) {
-            continue;
-        }
-        if (!next || next.depth <= candidate.depth) {
-            return candidate.block.id;
-        }
-    }
-    return null;
-}
-
 export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBlockId | null): StoryBlockTarget {
     if (!afterBlockId) {
         return { parentId: null };
@@ -601,6 +512,32 @@ export function containerExitedByEmptyLine(scene: StoryScene, target: StoryBlock
         return parent.parentId && scene.blocks[parent.parentId] ? parent.parentId : null;
     }
     return parent.id;
+}
+
+/**
+ * What Enter on an empty slot does at `target` - the one answer both the commit and the slot's key
+ * hint read, so the hint cannot promise something the key does not do.
+ *
+ * - `option`: the last line of an option's body becomes the menu's next option (after `optionId`).
+ *   Stepping out of an option lands at the menu's own level, and a menu holds nothing but options, so
+ *   the line there can only be one.
+ * - `exit`: the last line of any other block steps out of it, reopening after `containerId`
+ *   ({@link containerExitedByEmptyLine}).
+ * - null: a line mid-body or at the scene's level, which stays a blank row.
+ */
+export function emptyLineEnterAction(
+    scene: StoryScene,
+    target: StoryBlockTarget,
+): { kind: "option"; optionId: StoryBlockId; menuId: StoryBlockId } | { kind: "exit"; containerId: StoryBlockId } | null {
+    if (!target.parentId || target.beforeBlockId) {
+        return null;
+    }
+    const parent = scene.blocks[target.parentId];
+    if (parent?.kind === "nodeAction" && parent.payload.action === "choiceOption" && parent.parentId && scene.blocks[parent.parentId]) {
+        return { kind: "option", optionId: parent.id, menuId: parent.parentId };
+    }
+    const exited = containerExitedByEmptyLine(scene, target);
+    return exited ? { kind: "exit", containerId: exited } : null;
 }
 
 /**

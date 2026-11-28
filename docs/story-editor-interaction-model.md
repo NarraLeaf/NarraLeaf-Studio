@@ -90,13 +90,6 @@ next line belongs instead: the option a menu was scaffolded with (its label, the
 *after* the container: that slot was drawn between the header and its first child while its line
 committed past the whole container, so Enter in a menu looked like it had added a row outside it.
 
-**A menu ends with its own add.** An expanded menu draws a quiet「＋ 添加选项」line under its last row —
-the scene's "add a row" line at the menu's scale — and `ArrowDown` off that row lands on it, with
-`Enter` adding the option and putting the caret in its label. Without it, an author who had written
-what happens inside one option had no way back to the next option that did not start at the menu's
-header; `ArrowUp` walks the same steps back, menu line before last row. The line sits at the options'
-depth (gutter included), and a slot that steps out of the menu is drawn below it.
-
 **Below an option or a branch is inside it.** A menu holds only options and a condition only branches;
 the compiler passes over any other row under them without a word. So "insert below" (`Shift+Enter`,
 the row menu) on an option opens the slot at the top of its body - with the option label's own
@@ -110,8 +103,19 @@ below (on the `else`, just above it). A fallback opens its body; an `else if` op
 `Enter` in that editor closes it with the new branch active and the keys back on the rows.
 
 **An empty last line steps out of its block.** `Enter` on an empty slot at the very end of a body
-writes nothing and reopens the slot after the block, one level out - out of an option is out of its
-menu, out of a branch is out of its condition. Anywhere else an empty line is still a blank row.
+writes nothing and goes one level out (`emptyLineEnterAction`). Out of an option lands at the menu's
+own level, where the only thing a line can be is an option, so it becomes the menu's next option,
+caret in its label; out of a branch is out of its condition; out of anything else reopens the slot
+after that block. Anywhere else an empty line is still a blank row.
+
+So a menu is written without leaving the keys: label, `Shift+Enter` into it, its lines, `Enter` on
+the empty line for the next option, and `Enter` on an empty option to end the menu (it goes, unless
+it is the only one, and the slot opens after the menu; `Backspace` still steps back instead). There
+is no add line at the end of a menu - the header's `+` is the pointer's way to add one.
+
+The keys are named where they act, in the placeholders: an empty option reads
+「选项文本，⇧Enter 编写选项内容，Enter 结束菜单」, and an empty slot at the end of a body says what its
+Enter does (「Enter 新建选项」, 「Enter 跳出条件」).
 
 The condition command also answers to the word an author reaches for first: `story.command.<id>.alias`
 is read by the parser and the menu search but never written, so `@如果` (ja `@もし`) finds and builds

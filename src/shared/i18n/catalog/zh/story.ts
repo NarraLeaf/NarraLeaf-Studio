@@ -932,6 +932,7 @@ export const story = {
         placeholderNarration: "旁白…",
         placeholderChoicePrompt: "选项提示…",
         placeholderChoiceText: "选项文本…",
+        placeholderChoiceTextKeys: "选项文本，{body} 编写选项内容，{end} 结束菜单",
         placeholderNote: "备注…",
         placeholderText: "文本…",
         dragRow: "拖动行",
@@ -944,6 +945,8 @@ export const story = {
         playFromRow: "从此行播放",
         playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入指令，# 选择角色…",
+        insertPlaceholderNewOption: "输入旁白，{trigger} 插入指令，{enter} 新建选项",
+        insertPlaceholderExit: "输入旁白，{trigger} 插入指令，{enter} 跳出{container}",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
         // A slot that writes commands only (a character's behaviours): no narration, no speaker
         insertPlaceholderCommand: "输入 {trigger} 选择指令…",

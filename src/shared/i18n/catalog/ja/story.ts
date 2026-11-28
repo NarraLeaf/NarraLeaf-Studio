@@ -965,6 +965,7 @@ export const story = {
         placeholderNarration: "地の文…",
         placeholderChoicePrompt: "選択の問いかけ…",
         placeholderChoiceText: "選択肢の文…",
+        placeholderChoiceTextKeys: "選択肢の文。{body} で中身を書く、{end} でメニューを終える",
         placeholderNote: "メモ…",
         placeholderText: "テキスト…",
         dragRow: "行をドラッグ",
@@ -980,6 +981,8 @@ export const story = {
         playFromRow: "この行から再生",
         playBranch: "この枝を再生",
         insertPlaceholder: "地の文を書く。{trigger} でアクション、# でキャラクター…",
+        insertPlaceholderNewOption: "地の文を書く。{trigger} でアクション、{enter} で次の選択肢",
+        insertPlaceholderExit: "地の文を書く。{trigger} でアクション、{enter} で{container}を抜ける",
         insertPlaceholderCharacter: "{name} のアクションを選ぶ…",
         // A slot that writes commands only (a character's behaviours): no narration, no speaker
         insertPlaceholderCommand: "{trigger} でコマンドを選択…",

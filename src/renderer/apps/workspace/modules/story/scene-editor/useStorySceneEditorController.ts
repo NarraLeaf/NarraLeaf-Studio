@@ -72,7 +72,7 @@ import {
     annotateNestingBranches,
     buildDialogueAppearances,
     buildVisibleRows,
-    containerExitedByEmptyLine,
+    emptyLineEnterAction,
     filterOutSelectedDescendants,
     findPreviousSibling,
     fitTargetForRow,
@@ -81,11 +81,10 @@ import {
     planBranchBelow,
     planRowBackspaceReplacement,
     planSelectionNudge,
+    getContainerHeaderInfo,
     getInsertionTargetAfter,
     getTextSegment,
     hasInspector,
-    menuEndingAt,
-    menuLastRowIndex,
     rewritesRowInPlace,
     storyRowActivation,
     storyRowLineEdit,
@@ -557,15 +556,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
      */
     const [addRowFocused, setAddRowFocused] = useState(false);
-    /**
-     * Which menu's "add option" line the keyboard cursor is on, if any.
-     *
-     * The second position with no row behind it (the scene's add-row is the first): arrowing Down off
-     * the last row inside an expanded menu lands here, and Enter adds an option - which is how an
-     * author who has just written what happens inside one option gets to the next one without going
-     * back up to the menu's header. Null while a row is active.
-     */
-    const [addOptionMenuId, setAddOptionMenuId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [characterRevision, setCharacterRevision] = useState(0);
     /**
@@ -720,17 +710,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     useEffect(() => {
         if (activeBlockId !== null) {
             setAddRowFocused(false);
-            setAddOptionMenuId(null);
         }
     }, [activeBlockId]);
-
-    // Opening a line or a slot also ends the add-option cursor: it is not a row, and the caret has
-    // gone somewhere else. (Enter on that line lands here too - adding the option opens its label.)
-    useEffect(() => {
-        if (editorMode.kind !== "idle") {
-            setAddOptionMenuId(null);
-        }
-    }, [editorMode.kind]);
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -2218,6 +2199,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the author meant, so take the Backspace rung instead: the empty dialogue becomes the blank slot
         // that can turn into anything. Same keystroke, same result as backing out of the line by hand.
         if (value === "") {
+            // An empty option ends the menu: the author has written the options they want and Enter
+            // again is how a list ends. It goes (unless it is the menu's only one, which stays to be
+            // named), and the caret opens after the menu. Backspace keeps the step-back.
+            const menu = currentBlock.parentId ? scene.blocks[currentBlock.parentId] : null;
+            if (currentBlock.kind === "nodeAction" && currentBlock.payload.action === "choiceOption"
+                && currentBlock.childrenIds.length === 0 && menu) {
+                if (menu.childrenIds.length > 1) {
+                    recordTextEditHistoryOnce();
+                    storyService.deleteBlock(storyId, sceneId, currentBlock.id);
+                }
+                freshContinuationRef.current = null;
+                startInsertAfter(menu.id, true);
+                return;
+            }
             handleBackspaceAtEmptyStart();
             return;
         }
@@ -2349,14 +2344,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Enter on a selected-but-not-editing row: text rows open for editing (caret at the end); action rows
     // open their inspector (or their card-less operation); with nothing selected it falls back to a slot.
     const enterEditOrInspectorForActive = useCallback(() => {
-        // The keyboard cursor on a menu's "add option" line: Enter is the click. Adding the option puts
-        // the caret in its label, which is where the author is heading anyway.
-        if (addOptionMenuId) {
-            if (!frozen) {
-                addMenuOption(addOptionMenuId);
-            }
-            return;
-        }
         if (!scene || !activeBlockId) {
             if (!frozen) {
                 startInsertAfter(null, true);
@@ -2379,7 +2366,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         activateBlockForInspectorOrOp(activeBlockId);
-    }, [activeBlockId, activateBlockForInspectorOrOp, addMenuOption, addOptionMenuId, frozen, scene, startInsertAfter]);
+    }, [activeBlockId, activateBlockForInspectorOrOp, frozen, scene, startInsertAfter]);
 
     /**
      * Open a row as text, caret at the end: F2 and the row menu's 以文本形式编辑 / Edit as text. `line` is
@@ -2936,11 +2923,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
             return true;
         }
-        // The last line of a body steps out of its block instead (see `containerExitedByEmptyLine`):
-        // nothing is written, and the slot reopens after the block, one level out.
-        const exited = scene ? containerExitedByEmptyLine(scene, slot.target ?? getInsertionTargetAfter(scene, slot.afterBlockId)) : null;
-        if (exited) {
-            startInsertAfter(exited, true);
+        // The last line of a body does something else instead (see `emptyLineEnterAction`): nothing
+        // is written. In an option it becomes the menu's next option; in any other block the slot
+        // reopens after the block, one level out.
+        const action = scene ? emptyLineEnterAction(scene, slot.target ?? getInsertionTargetAfter(scene, slot.afterBlockId)) : null;
+        if (action?.kind === "option") {
+            const option = createBlock("choiceOption");
+            const menu = scene?.blocks[action.menuId];
+            if (option && menu) {
+                const index = menu.childrenIds.indexOf(action.optionId);
+                insertBlock(option, null, false, { target: { parentId: menu.id, beforeBlockId: menu.childrenIds[index + 1] ?? null } });
+                // An option nobody names is the editor's offer, taken away again if left empty.
+                freshContinuationRef.current = option.id;
+                setEditorMode({ kind: "text", blockId: option.id, value: "", caret: "end" });
+                return true;
+            }
+        }
+        if (action?.kind === "exit") {
+            startInsertAfter(action.containerId, true);
             return true;
         }
         // A slot with no row beneath it: the blank line lands where the slot is drawn, and the slot
@@ -2948,7 +2948,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         insertBlock(block, slot.afterBlockId, false, { target: slot.target });
         startInsertAfter(block.id, true);
         return true;
-    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+    }, [createBlock, editorMode, insertBlock, scene, startInsertAfter, uuidService]);
 
     /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
@@ -3676,6 +3676,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService]);
 
     /**
+     * What Enter on the open slot does while it is empty, for its key hint (see `emptyLineEnterAction`).
+     * A slot standing on a row of its own writes a blank row in front of it whatever its place, so it
+     * has nothing to hint.
+     */
+    const insertSlotEnterAction = useMemo((): { kind: "option" } | { kind: "exit"; container: string } | null => {
+        if (editorMode.kind !== "insert" || editorMode.slot.replaceBlockId || !scene) {
+            return null;
+        }
+        const action = emptyLineEnterAction(scene, editorMode.slot.target ?? getInsertionTargetAfter(scene, editorMode.slot.afterBlockId));
+        if (!action) {
+            return null;
+        }
+        if (action.kind === "option") {
+            return { kind: "option" };
+        }
+        const container = scene.blocks[action.containerId];
+        const pill = container ? getContainerHeaderInfo(container)?.pill : undefined;
+        return pill ? { kind: "exit", container: pill } : null;
+    }, [editorMode, scene]);
+
+    /**
      * Shift+Enter on a condition's branch: the next branch, not a line. The branch's own Enter already
      * writes into its body, so this is the one key left for "and otherwise" - the fallback under the
      * last branch, or an `else if` (see `planBranchBelow`). A fallback opens its body for the first
@@ -3756,54 +3777,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setSelectedBlockIds(new Set());
         selectionAnchorRef.current = null;
         goalColumnRef.current = null;
-        setAddOptionMenuId(null);
         setAddRowFocused(true);
     }, [revealWith]);
 
-    /** Put the keyboard cursor on `menuId`'s "add option" line; Enter there adds the option. */
-    const focusAddOption = useCallback((menuId: StoryBlockId) => {
-        setActiveBlockId(null);
-        setSelectedBlockIds(new Set());
-        selectionAnchorRef.current = null;
-        goalColumnRef.current = null;
-        setAddRowFocused(false);
-        setAddOptionMenuId(menuId);
-    }, []);
-
     const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
-        // The add-option line is the last step of the walk inside a menu: Up goes back onto the menu's
-        // last row, Down steps out of the menu to the row the scene writes next (or to the scene's own
-        // add-row when the menu is the last thing on the page).
-        if (addOptionMenuId) {
-            const lastIndex = menuLastRowIndex(visibleRows, addOptionMenuId);
-            setAddOptionMenuId(null);
-            if (direction === "up") {
-                const last = lastIndex >= 0 ? visibleRows[lastIndex] : null;
-                last ? selectSingleRow(last.block.id) : setAddRowFocused(false);
-                return;
-            }
-            const next = lastIndex >= 0 ? visibleRows[lastIndex + 1] : undefined;
-            next ? selectSingleRow(next.block.id) : focusAddRow();
-            return;
-        }
         // The add-row line sits one step past the last row in the keyboard order: Down off the bottom
         // lands on it, Up steps back onto the last row (nothing below it to reach with Down).
         if (addRowFocused) {
             if (direction === "up") {
-                // Up off the scene's add-row walks the same steps back: a menu's add-option line sits
-                // between its last row and the scene's line, so it is the first thing met on the way up.
-                const lastIndex = visibleRows.length - 1;
-                const last = visibleRows[lastIndex];
-                if (!last) {
-                    setAddRowFocused(false);
-                    return;
-                }
-                const menuId = menuEndingAt(visibleRows, lastIndex);
-                if (menuId) {
-                    focusAddOption(menuId);
-                    return;
-                }
-                selectSingleRow(last.block.id);
+                const last = visibleRows[visibleRows.length - 1];
+                last ? selectSingleRow(last.block.id) : setAddRowFocused(false);
             }
             return;
         }
@@ -3815,13 +3798,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
-        if (direction === "down" && currentIndex >= 0) {
-            const menuId = menuEndingAt(visibleRows, currentIndex);
-            if (menuId) {
-                focusAddOption(menuId);
-                return;
-            }
-        }
         if (direction === "down" && currentIndex === visibleRows.length - 1) {
             focusAddRow();
             return;
@@ -3849,7 +3825,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 }
             }
         }
-    }, [activeBlockId, addOptionMenuId, addRowFocused, editorMode.kind, focusAddOption, focusAddRow, openRowForEditing, rowIndexById, selectSingleRow, visibleRows]);
+    }, [activeBlockId, addRowFocused, editorMode.kind, focusAddRow, openRowForEditing, rowIndexById, selectSingleRow, visibleRows]);
 
     // Shift+Arrow - grow (or shrink) the selection between the anchor row and the moving head.
     const extendRowSelection = useCallback((direction: "up" | "down") => {
@@ -4237,7 +4213,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     return {
         context, isInitialized, document, documentForRows, scene, loading,
-        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, addOptionMenuId, selectionRevision,
+        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
         characters, commandContext: stableCommandContext, visibleRows, shouldRenderActiveInsertSlot,
         density, setDensity, rowFilter, setRowFilter, rowFilterTallies,
         // How many rows the page would hold with the filter off. The one thing that tells an empty
@@ -4260,7 +4236,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit, startTrailingSlotWith,
-        startInsertAfterSelection, insertBelowRow, indentSelection, selectAllRows, moveActiveRowSelection,
+        startInsertAfterSelection, insertBelowRow, insertSlotEnterAction, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, escapeInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,

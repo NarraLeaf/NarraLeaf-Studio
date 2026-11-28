@@ -95,6 +95,8 @@ import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import type { StoryRowHighlight } from "@/lib/settings/storyRowHighlightOptions";
 import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import { STORY_EDIT_BRANCH_CONDITION_EVENT } from "./storySceneEditorTypes";
+import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
+import { isMacPlatform } from "@/lib/app/platform";
 import {
     canAcceptChildren,
     describeBlock,
@@ -839,7 +841,12 @@ function editorPlaceholder(
         }
         case "narration": return t("story.rows.placeholderNarration");
         case "choicePrompt": return t("story.rows.placeholderChoicePrompt");
-        case "choiceText": return t("story.rows.placeholderChoiceText");
+        // An option still being named says which keys go where: Shift+Enter writes what it leads to,
+        // Enter on it while empty ends the menu. Not on one that already has rows of its own, whose
+        // empty Enter does not end anything.
+        case "choiceText": return block.childrenIds.length === 0
+            ? t("story.rows.placeholderChoiceTextKeys", { body: formatKeybinding("shift+enter", isMacPlatform()), end: formatKeybinding("enter", isMacPlatform()) })
+            : t("story.rows.placeholderChoiceText");
         case "note": return t("story.rows.placeholderNote");
         default: return t("story.rows.placeholderText");
     }
@@ -1592,7 +1599,7 @@ function ConnectorSegment(props: { left: string | number; top: number; ends: boo
 const ROW_INDENT_STEP = `(var(--nl-story-mark,26px) + ${ROW_GAP_PX}px)`;
 
 /** The indent for content `levels` deep, as a CSS length. */
-export function rowIndent(levels: number): string {
+function rowIndent(levels: number): string {
     return `calc(${ROW_INDENT_STEP} * ${levels})`;
 }
 
@@ -2263,6 +2270,11 @@ export function InsertRow(props: {
     /** Escape #1 — drop the candidates, keep the line. */
     onDismissChooser: () => void;
     /**
+     * What Enter does on this slot while it is empty, when that is more than a blank row: the next
+     * option, or stepping out of the named block. Named in the placeholder, beside the triggers.
+     */
+    emptyEnter?: { kind: "option" } | { kind: "exit"; container: string } | null;
+    /**
      * Escape #2 — an uncommitted slot leaves nothing behind. `lineBack` is the text a slot standing on a
      * speaker's line hands back to it (the "・" an input method typed there, see `inputMethodLine`).
      */
@@ -2703,6 +2715,10 @@ export function InsertRow(props: {
                             ? t("story.rows.insertPlaceholderCommand", { trigger: props.slashAtAlias ? "@" : "/" })
                             : slotScopeName !== null
                             ? t("story.rows.insertPlaceholderCharacter", { name: slotScopeName })
+                            : props.emptyEnter?.kind === "option"
+                            ? t("story.rows.insertPlaceholderNewOption", { trigger: props.slashAtAlias ? "@" : "/", enter: formatKeybinding("enter", isMacPlatform()) })
+                            : props.emptyEnter?.kind === "exit"
+                            ? t("story.rows.insertPlaceholderExit", { trigger: props.slashAtAlias ? "@" : "/", enter: formatKeybinding("enter", isMacPlatform()), container: props.emptyEnter.container })
                             : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         const typed = event.target.value;

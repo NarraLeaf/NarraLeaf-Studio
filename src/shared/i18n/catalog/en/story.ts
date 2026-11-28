@@ -1044,6 +1044,7 @@ export const story = {
         placeholderNarration: "Narration…",
         placeholderChoicePrompt: "Choice prompt…",
         placeholderChoiceText: "Option text…",
+        placeholderChoiceTextKeys: "Option text, {body} to write what it leads to, {end} to end the menu",
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
@@ -1063,6 +1064,8 @@ export const story = {
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for commands, # for characters…",
+        insertPlaceholderNewOption: "Type narration, {trigger} for commands, {enter} for the next option",
+        insertPlaceholderExit: "Type narration, {trigger} for commands, {enter} to step out of {container}",
         insertPlaceholderCharacter: "Pick an action for {name}…",
         // A slot that writes commands only (a character's behaviours): no narration, no speaker
         insertPlaceholderCommand: "Type {trigger} to choose a command…",
